@@ -1,4 +1,4 @@
-```markdown
+
 # 🦅 CrowdStrike Falcon Container Sensor Automation
 
 Automates downloading the CrowdStrike Falcon Container Sensor and pushing it to Azure Container Registry (ACR).
@@ -172,4 +172,4 @@ az acr repository list -n <youracr>
 - Store Azure JSON output securely
 - Test with manual trigger before enabling schedule
 - Regularly rotate Azure credentials
-```
+
