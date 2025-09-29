@@ -137,7 +137,9 @@ az acr repository list -n <youracr>
 2. Check latest workflow run
 3. Review step outputs
 
-## 🛟 Troubleshooting
+## ▶️ Example Run / Expected Resylts 
+
+<img width="1012" height="544" alt="image" src="https://github.com/user-attachments/assets/e14e22d6-b7eb-40d2-b186-ef255512eabb" />
 
 ### Common Issues
 1. Authentication Failures
