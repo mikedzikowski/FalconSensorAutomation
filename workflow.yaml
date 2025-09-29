@@ -1,0 +1,87 @@
+# .github/workflows/falcon-sensor.yml
+
+name: Falcon Sensor ACR Sync
+
+on:
+  # Triggers on push to main
+  push:
+    branches: [ "main" ]
+  # Triggers on PR to main
+  pull_request:
+    branches: [ "main" ]
+  # Manual trigger
+  workflow_dispatch:
+  # Runs every hour
+  schedule:
+    - cron: '0 * * * *'
+
+jobs:
+  sync-sensor:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Verify Environment Variables
+        env:
+          TEST_CLIENT_ID: ${{ vars.FALCON_CLIENT_ID }}
+          TEST_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+        run: |
+          echo "🔍 Verifying environment variables..."
+          if [ -n "$TEST_CLIENT_ID" ]; then
+            echo "✅ FALCON_CLIENT_ID is set"
+          else
+            echo "❌ FALCON_CLIENT_ID is NOT set"
+            exit 1
+          fi
+          if [ -n "$TEST_CLIENT_SECRET" ]; then
+            echo "✅ FALCON_CLIENT_SECRET is set"
+          else
+            echo "❌ FALCON_CLIENT_SECRET is NOT set"
+            exit 1
+          fi
+
+      - name: Login to Azure Container Registry
+        uses: azure/docker-login@v1
+        with:
+          login-server: crmiked.azurecr.io
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Download and Process Falcon Container Sensor
+        env:
+          FCSCLIENTID: ${{ vars.FALCON_CLIENT_ID }}
+          FSCSECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+        run: |
+          echo "⬇️ Downloading Falcon Container Sensor pull script..."
+          curl -sSL -o falcon-container-sensor-pull.sh https://github.com/CrowdStrike/falcon-scripts/releases/latest/download/falcon-container-sensor-pull.sh
+          chmod 777 ./falcon-container-sensor-pull.sh
+
+          echo "🔄 Copying sensor to ACR..."
+          ./falcon-container-sensor-pull.sh \
+          --client-id "$FCSCLIENTID" \
+          --client-secret "$FSCSECRET" \
+          --region us-1 \
+          --type falcon-sensor \
+          --copy crmiked.azurecr.io/falcon-sensor
+
+          echo "✅ Sensor processing complete"
+
+      - name: Run FCS IaC Scan
+        uses: crowdstrike/fcs-action@v2.0.0
+        env:
+          INPUT_FALCON_CLIENT_ID: ${{ vars.FALCON_CLIENT_ID }}
+          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+        with:
+          falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
+          falcon_region: 'us-1'
+          path: './'
+
+      - name: Workflow Summary
+        run: |
+          echo "## Falcon Sensor Sync Complete" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Environment verified" >> $GITHUB_STEP_SUMMARY
+          echo "✅ ACR login successful" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Sensor downloaded and pushed" >> $GITHUB_STEP_SUMMARY
+          echo "✅ IaC scan completed" >> $GITHUB_STEP_SUMMARY
