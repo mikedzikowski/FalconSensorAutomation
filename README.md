@@ -167,6 +167,10 @@ docker images | grep falcon-sensor
 2. Check latest workflow run
 3. Review step outputs
 
+## Example Run
+<img width="1012" height="544" alt="image" src="https://github.com/user-attachments/assets/fffb034f-335d-4978-b8aa-b603dc2a6ccd" />
+
+
 ## 🛟 Troubleshooting
 
 ### Common Issues
