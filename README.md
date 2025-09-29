@@ -1,83 +1,3 @@
-```yaml
-# .github/workflows/falcon-sensor.yml
-
-name: Falcon Sensor ACR Sync
-
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-  workflow_dispatch:
-  schedule:
-    - cron: '0 * * * *'
-
-jobs:
-  sync-sensor:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Verify Environment Variables
-        env:
-          TEST_CLIENT_ID: ${{ vars.FALCON_CLIENT_ID }}
-          TEST_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
-        run: |
-          echo "🔍 Verifying environment variables..."
-          if [ -n "$TEST_CLIENT_ID" ]; then
-            echo "✅ FALCON_CLIENT_ID is set"
-          else
-            echo "❌ FALCON_CLIENT_ID is NOT set"
-            exit 1
-          fi
-          if [ -n "$TEST_CLIENT_SECRET" ]; then
-            echo "✅ FALCON_CLIENT_SECRET is set"
-          else
-            echo "❌ FALCON_CLIENT_SECRET is NOT set"
-            exit 1
-          fi
-
-      - name: Login to Azure Container Registry
-        uses: azure/docker-login@v1
-        with:
-          login-server: <youracr>.azurecr.io
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
-
-      - name: Download and Process Falcon Container Sensor
-        env:
-          FCSCLIENTID: ${{ vars.FALCON_CLIENT_ID }}
-          FSCSECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
-        run: |
-          echo "⬇️ Downloading Falcon Container Sensor pull script..."
-          curl -sSL -o falcon-container-sensor-pull.sh https://github.com/CrowdStrike/falcon-scripts/releases/latest/download/falcon-container-sensor-pull.sh
-          chmod 777 ./falcon-container-sensor-pull.sh
-
-          echo "🔄 Copying sensor to ACR..."
-          ./falcon-container-sensor-pull.sh \
-          --client-id "$FCSCLIENTID" \
-          --client-secret "$FSCSECRET" \
-          --region us-1 \
-          --type falcon-sensor \
-          --copy <youracr>.azurecr.io/falcon-sensor
-
-          echo "✅ Sensor processing complete"
-
-      - name: Run FCS IaC Scan
-        uses: crowdstrike/fcs-action@v2.0.0
-        env:
-          INPUT_FALCON_CLIENT_ID: ${{ vars.FALCON_CLIENT_ID }}
-          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
-        with:
-          falcon_client_id: ${{ vars.FALCON_CLIENT_ID }}
-          falcon_region: 'us-1'
-          path: './'
-```
-
-And here's the updated README:
-
 ```markdown
 # 🦅 CrowdStrike Falcon Container Sensor Automation
 
@@ -96,6 +16,42 @@ Automates downloading the CrowdStrike Falcon Container Sensor and pushing it to 
 1. Azure Container Registry
 2. CrowdStrike Falcon API Credentials
 3. GitHub Repository
+4. Azure CLI installed (for generating credentials)
+
+### Azure Configuration
+
+1. Create Azure Service Principal and get credentials:
+```bash
+# Login to Azure
+az login
+
+# Create Service Principal with ACR push role
+az ad sp create-for-rbac \
+  --name "GitHub-ACR-Access" \
+  --role AcrPush \
+  --scopes /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ContainerRegistry/registries/<youracr> \
+  --sdk-auth
+
+# This will output JSON similar to:
+{
+  "clientId": "xxx",
+  "clientSecret": "xxx",
+  "subscriptionId": "xxx",
+  "tenantId": "xxx",
+  "activeDirectoryEndpointUrl": "https://login.microsoftonline.com",
+  "resourceManagerEndpointUrl": "https://management.azure.com/",
+  "activeDirectoryGraphResourceId": "https://graph.windows.net/",
+  "sqlManagementEndpointUrl": "https://management.core.windows.net:8443/",
+  "galleryEndpointUrl": "https://gallery.azure.com/",
+  "managementEndpointUrl": "https://management.core.windows.net/"
+}
+```
+
+2. Get ACR credentials:
+```bash
+# Get ACR admin credentials
+az acr credential show -n <youracr>
+```
 
 ### Required Permissions
 1. CrowdStrike API Client
@@ -109,6 +65,7 @@ Automates downloading the CrowdStrike Falcon Container Sensor and pushing it to 
    ```yaml
    - Registry Name: <youracr>.azurecr.io
    - Admin Access Enabled
+   - Service Principal: AcrPush role
    ```
 
 ### GitHub Configuration
@@ -117,6 +74,7 @@ Add to repository secrets:
 ACR_USERNAME: Azure Container Registry username
 ACR_PASSWORD: Azure Container Registry password
 FALCON_CLIENT_SECRET: CrowdStrike API secret
+AZURE_CREDENTIALS: Entire JSON output from az ad sp create-for-rbac
 ```
 
 Add to repository variables:
@@ -153,6 +111,15 @@ schedule:
 
 ## 🔍 Verification
 
+### Check Azure Setup
+```bash
+# Verify Service Principal
+az ad sp list --display-name "GitHub-ACR-Access"
+
+# Test ACR access
+az acr login -n <youracr>
+```
+
 ### Check Deployment
 ```bash
 # Login to ACR
@@ -160,16 +127,15 @@ az acr login -n <youracr>
 
 # List images
 docker images | grep falcon-sensor
+
+# Check ACR contents
+az acr repository list -n <youracr>
 ```
 
 ### View Workflow Status
 1. Go to Actions tab
 2. Check latest workflow run
 3. Review step outputs
-
-## Example Run
-<img width="1012" height="544" alt="image" src="https://github.com/user-attachments/assets/fffb034f-335d-4978-b8aa-b603dc2a6ccd" />
-
 
 ## 🛟 Troubleshooting
 
@@ -178,19 +144,30 @@ docker images | grep falcon-sensor
    - Verify secrets are set correctly
    - Check API permissions
    - Confirm ACR credentials
+   - Validate Azure JSON format
 
 2. ACR Access
    - Verify ACR name is correct
    - Ensure admin access is enabled
    - Check network connectivity
+   - Confirm Service Principal permissions
+
+3. Azure JSON Issues
+   ```bash
+   # Regenerate credentials if needed
+   az ad sp create-for-rbac --name "GitHub-ACR-Access" --role AcrPush --scopes /subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.ContainerRegistry/registries/<youracr> --sdk-auth
+   ```
 
 ## 📚 References
 - [CrowdStrike Docs](https://falcon.crowdstrike.com/documentation/146/falcon-container-security)
 - [ACR Documentation](https://learn.microsoft.com/en-us/azure/container-registry/)
 - [GitHub Actions](https://docs.github.com/en/actions)
+- [Azure Service Principal](https://learn.microsoft.com/en-us/azure/active-directory/develop/app-objects-and-service-principals)
 
 ## ⚠️ Important Notes
 - Replace all instances of `<youracr>` with your actual ACR name
 - Keep secrets and credentials secure
+- Store Azure JSON output securely
 - Test with manual trigger before enabling schedule
+- Regularly rotate Azure credentials
 ```
